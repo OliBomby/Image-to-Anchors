@@ -1,0 +1,74 @@
+from smart_converter import SmartConverter
+import configparser
+import os
+import numpy as np
+from os import path
+import multiprocessing as mp
+
+results = []
+
+
+def process_file(converter, dirname, filename, time):
+    print("Processing file: %s" % filename)
+    image_path = path.join(dirname, filename)
+    slidercode = converter.convert(image_path, time, np.array((0, 0)))
+    return time, slidercode
+
+
+def collect_code(result):
+    global results
+    if result[1] is not None:
+        results.append(result)
+
+
+def main():
+    dir_name = "images/bad_apple"
+    t_start = -66
+    t_step = 40
+
+    config = configparser.ConfigParser()
+    config.read('config_animation.ini')
+
+    # Get all the frames from a directory
+    filelist = os.listdir(dir_name)
+    for fichier in filelist[:]:  # filelist[:] makes a copy of filelist.
+        if not (fichier.endswith(".bmp") or fichier.endswith(".png") or fichier.endswith(".jpg")):
+            filelist.remove(fichier)
+
+    filelist.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
+
+    # Get a thread pool for the multi-processing
+    pool = mp.Pool(mp.cpu_count())
+
+    # Use loop to parallelize
+    for i, fn in enumerate(filelist):
+        pool.apply_async(process_file, args=(SmartConverter(config), dir_name, fn, t_start + i * t_step), callback=collect_code)
+
+    pool.close()
+    pool.join()  # postpones the execution of next line of code until all processes in the queue are done.
+
+    # Sort results
+    results.sort(key=lambda x: x[0])
+    codes = [r for i, r in results]
+
+    # Single processor code
+    # last_time = t_start
+    # converter = SmartConverter2(config)
+    # for fn in filelist:
+    #     print("Processing file: %s" % fn)
+    #     image_path = path.join(dir_name, fn)
+    #
+    #     slidercode = converter.convert(image_path, last_time, np.array((0, 0)))
+    #     last_time += t_step
+    #     if slidercode is not None:
+    #         codes.append(slidercode)
+
+    with open("output.txt", "w+") as f:
+        f.writelines(codes)
+
+    print("Done!")
+    # input("Press enter to continue...")
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,16 @@
+# Virtual env files
+venv
+venv/*
+
+# Project files
+.idea
+.idea/*
+
+# Test images
+images/*
+!images/urdead.png
+!images/image pepega.png
+!images/250.bmp
+
+# Output code
+output.txt
