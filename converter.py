@@ -71,7 +71,7 @@ class Converter:
             anchor_string = "|%s:%s" % (anchor[0], anchor[1])
             slidercode += anchor_string
 
-        slidercode += ",1,1,0|0,0:0|0:0,0:0:0:0:\n"
+        slidercode += ",1,1\n"
 
         return slidercode
 
