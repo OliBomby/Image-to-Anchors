@@ -141,6 +141,7 @@ class SmartConverter(Converter):
             line = lines_dict[result[i][0]]
             if line.y < min_y:
                 min_y = line.y
+                min_x = line.x1
                 min_index = i
             elif line.y == min_y and line.x1 < min_x:
                 min_x = line.x1
