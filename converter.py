@@ -27,6 +27,7 @@ class Converter:
         self.downscale_factor = None
         self.shape = None
 
+        self.CONFIG = config
         self.PIXEL_SPACING = int(config['SETTINGS']['PIXEL_SPACING'])
         self.ROTATE = config['SETTINGS'].getboolean('ROTATE')
         self.LAYER_2_OFFSET = config['SETTINGS'].getboolean('LAYER_2_OFFSET')

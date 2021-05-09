@@ -1,4 +1,5 @@
 from smart_converter import SmartConverter
+from fill_converter import FillConverter
 import configparser
 import os
 import numpy as np
@@ -24,7 +25,7 @@ def collect_code(result):
 def main():
     dir_name = "images/bad_apple"
     t_start = -66
-    t_step = 40
+    t_step = 40 * 1.5  # DT
 
     config = configparser.ConfigParser()
     config.read('config_animation.ini')
@@ -42,7 +43,11 @@ def main():
 
     # Use loop to parallelize
     for i, fn in enumerate(filelist):
-        pool.apply_async(process_file, args=(SmartConverter(config), dir_name, fn, t_start + i * t_step), callback=collect_code)
+        t = t_start + i * t_step
+        # Animate in 2's
+        if i % 2 != 0:
+            continue
+        pool.apply_async(process_file, args=(FillConverter(config), dir_name, fn, t), callback=collect_code)
 
     pool.close()
     pool.join()  # postpones the execution of next line of code until all processes in the queue are done.

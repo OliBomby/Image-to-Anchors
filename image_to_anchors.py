@@ -8,7 +8,7 @@ def main():
     image_path = "images\\250.bmp"
 
     config = configparser.ConfigParser()
-    config.read('config2.ini')
+    config.read('config_animation.ini')
 
     converter = FillConverter(config)
     slidercode = converter.convert(image_path, 0)

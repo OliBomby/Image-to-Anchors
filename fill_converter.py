@@ -1,3 +1,6 @@
+import sys
+import traceback
+
 from converter import *
 import cv2
 import networkx as nx
@@ -87,6 +90,16 @@ def draw_path_to_line(start_line, end_line, path, anchors):
         prev = (line, lbound, rbound)
 
 
+def triangle_area(a, b, c):
+    return abs(0.5 * (a[0] * (b[1] - c[1]) +
+                  b[0] * (c[1] - a[1]) +
+                  c[0] * (a[1] - b[1])))
+
+
+def collinear(a, b, c):
+    return abs((a[1] - b[1]) * (a[0] - c[0]) - (a[1] - c[1]) * (a[0] - b[0])) <= 1e-6
+
+
 # Basic image converter for multi-colour images
 class FillConverter(Converter):
     def __init__(self, config_file):
@@ -101,34 +114,41 @@ class FillConverter(Converter):
             print("Slider resolution:", self.shape)
             print("Slider size: ", self.shape * self.PIXEL_SPACING)
 
-        slidercode = self.process_image(time)
-
-        return slidercode
+        try:
+            return self.process_image(time)
+        except Exception:
+            print("Exception in user code:")
+            print("-" * 60)
+            traceback.print_exc(file=sys.stdout)
+            print("-" * 60)
 
     def process_image(self, time):
-        WIDTH = 74 * 4
-        HEIGHT = 55 * 4
+        SCALE = float(self.CONFIG['SETTINGS']['SCALE'])
+        WINDOW_WIDTH = 70 * 4 / SCALE
 
-        windowsize = int(np.ceil(WIDTH * 0.05))
+        windowsize = int(np.ceil(WINDOW_WIDTH * 0.05))
         radius = int(np.ceil(windowsize / 2))
 
         circle_window = np.zeros((windowsize, windowsize), np.uint8)
         cv2.circle(circle_window, (radius, radius), windowsize, (255, 255, 255), -1)
 
-        circle_window2 = np.zeros((windowsize // 2, windowsize // 2), np.uint8)
-        cv2.circle(circle_window2, (radius, radius // 2), windowsize // 2, (255, 255, 255), -1)
-
-        circle_window_line = np.zeros((3, 3), np.uint8)
-        cv2.circle(circle_window_line, (1, 1), windowsize, (255, 255, 255), -1)
+        circle_window2 = np.zeros((windowsize // 3, windowsize // 3), np.uint8)
+        cv2.circle(circle_window2, (radius // 3, radius // 3), windowsize // 3, (255, 255, 255), -1)
 
         img = self.data[:, :, 0].astype(np.uint8)
         #img = cv2.copyMakeBorder(img, 1, 1, 1, 1, cv2.BORDER_CONSTANT, 0)
         (thresh, img) = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
 
+        # Erode the image
         img = cv2.erode(img, circle_window)
-        #dilated = cv2.dilate(dilated, circle_window)
 
-        contours, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(img, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) == 0:
+            return None
+
+        hierarchy = hierarchy[0]
+        contours = [contour.reshape(-1, 2) for contour in contours]
 
         # Erode again for the scan lines
         img = cv2.erode(img, circle_window2)
@@ -141,7 +161,7 @@ class FillConverter(Converter):
         g = nx.Graph()
         counter = 0
         prev_line_lines = []
-        for y in range(0, img.shape[0], windowsize):
+        for y in range(int(time % windowsize), img.shape[0], windowsize):
             x1 = -1
             line_lines = []
             for x in range(img.shape[1]):
@@ -197,10 +217,10 @@ class FillConverter(Converter):
             adj = np.empty((counter, counter))
             ni = 0
             for n in len_path:
-                dist = len_path[n][0]
+                total_dist = len_path[n][0]
                 di = 0
-                for d in dist:
-                    adj[ni, di] = dist[d]
+                for d in total_dist:
+                    adj[ni, di] = total_dist[d]
                     di += 1
                 ni += 1
 
@@ -260,60 +280,107 @@ class FillConverter(Converter):
             fillings.append(anchors)
 
         # Make sliders
+        if self.VERBOSE:
+            print("Making sliders...")
+
+        used_fillings = []
         slidercode = ""
-        for contour in contours:
+        # Loop through all outer contours using the hierarchy
+        next_outer = 0
+        while next_outer != -1:
+            current_outer = next_outer
+            contour = contours[current_outer]
+
+            # Get the index of the next outer contour from the hierarchy
+            next_outer = hierarchy[current_outer][0]
+
             if len(contour) < 2:
                 continue
 
+            # Get all the contours that are child of this contour
+            child_contours = []
+            next_child = hierarchy[current_outer][2]
+            while next_child != -1:
+                child_contours.append(contours[next_child])
+                next_child = hierarchy[next_child][0]
+
+            # Get the filling that fits inside this contour and the place to connect them
+            c_fillings = []
+            max_dist = windowsize * 1.5
+            c_start_indices = []
+            for i in range(len(contour)):
+                coord = contour[i]
+
+                # Find the filling for this contour start pos
+                for filling in fillings:
+                    pos = filling[0]
+                    dist = np.linalg.norm(pos - coord, ord=np.inf)
+                    if dist <= max_dist and list(pos) not in used_fillings:
+                        c_fillings.append(filling)
+                        c_start_indices.append(i)
+                        used_fillings.append(list(pos))
+
+            # Find the bet way to connect the child contours to the outer contour
+            for child in child_contours:
+                # This is the top left point of the child contour
+                pos = child[0]
+                # Find the closest point on the outer contour that is to the top left of this point
+                best_dist = np.inf
+                best_i = -1
+                for i, coord in enumerate(contour):
+                    dist = np.linalg.norm(pos - coord)
+                    if dist <= best_dist and coord[0] <= pos[0] and coord[1] <= pos[1]:
+                        best_dist = dist
+                        best_i = i
+                # Add the index of the best connection point to the list of start indices
+                # and add the child contour to the list of fillings so it gets added
+                c_fillings.append(list(child))
+                c_start_indices.append(best_i)
+
+            # Combine everything into a list of anchors
             anchors = []
+            for i, coord in enumerate(contour):
+                anchors.append(coord)
 
-            dist = 0
-            last_coord = None
-            for coord in contour:
-                if last_coord is not None:
-                    dist += np.linalg.norm(coord - last_coord)
-                anchors.append(coord.reshape(2))
-                last_coord = coord
+                while i in c_start_indices:
+                    f_index = c_start_indices.index(i)
+                    anchors += c_fillings.pop(f_index)
+                    c_start_indices.pop(f_index)
+                    anchors.append(coord)
+
             if len(contour) > 0:
-                if last_coord is not None:
-                    dist += np.linalg.norm(contour[0] - last_coord)
-                anchors.append(contour[0].reshape(2))
+                anchors.append(contour[0])
 
-            # Get the part of the contour which is in the top right corner
-            min_y = windowsize * 2
-            min_x = windowsize * 2
-            c_start_pos = contour[0]
-            for coord in contour:
-                if coord[0, 1] < min_y:
-                    min_y = coord[0, 1]
-                    min_x = coord[0, 0]
-                    c_start_pos = coord
-                elif coord[0, 1] == min_y and coord[0, 0] < min_x:
-                    min_x = coord[0, 0]
-                    c_start_pos = coord
-            c_start_pos = c_start_pos.reshape(2)
+            anchor1 = np.round(anchors.pop(0) * SCALE)
+            slidercode += "%s,%s,%s,6,0,L" % (int(anchor1[0]), int(anchor1[1]), int(time))
 
-            # Find the filling for this contour
-            closest = None
-            closest_dist = 999999999999
-            for filling in fillings:
-                pos = filling[0]
-                dist = np.linalg.norm(pos - c_start_pos)
-                if dist <= closest_dist and pos[0] >= c_start_pos[0] and pos[1] >= c_start_pos[1]:
-                    closest_dist = dist
-                    closest = filling
+            total_dist = 0
+            last_anchor = anchor1
+            for i, anchor in enumerate(anchors):
+                round_anchor = np.round(anchor * SCALE)
 
-            if closest is not None:
-                anchors += closest
+                if 0 < i < len(anchors) - 1:
+                    next_anchor = np.round(anchors[i + 1] * SCALE)
+                    if np.linalg.norm(anchors[i + 1] - anchor, ord=np.inf) <= 1 or\
+                            (triangle_area(last_anchor, round_anchor, next_anchor) < 1e-6 and
+                             np.linalg.norm(last_anchor - round_anchor) < np.linalg.norm(next_anchor - last_anchor)):
+                        continue
 
-            anchor1 = anchors.pop(0)
-            slidercode += "%s,%s,%s,6,0,L" % (anchor1[0], anchor1[1], int(time))
+                if last_anchor is not None:
+                    dist = np.linalg.norm(round_anchor - last_anchor)
+                    total_dist += dist
 
-            for anchor in anchors:
-                anchor_string = "|%s:%s" % (anchor[0], anchor[1])
+                anchor_string = "|%s:%s" % (int(round_anchor[0]), int(round_anchor[1]))
                 slidercode += anchor_string
 
-            slidercode += ",1,%s\n" % dist
+                last_anchor = round_anchor
+
+            slidercode += ",1,%s\n" % total_dist
+
+        if self.VERBOSE:
+            print("num fillings: %s" % len(fillings))
+            print("num used fillings: %s" % len(used_fillings))
+            print("num contours: %s" % len(contours))
 
         return slidercode
 
