@@ -152,6 +152,7 @@ class FillConverter(Converter):
 
         # Erode again for the scan lines
         img = cv2.erode(img, circle_window2)
+        line_width = int(windowsize * 2 / 3)
 
         # Create horizontal scan lines for the graph
         if self.VERBOSE:
@@ -161,7 +162,7 @@ class FillConverter(Converter):
         g = nx.Graph()
         counter = 0
         prev_line_lines = []
-        for y in range(int(time % windowsize), img.shape[0], windowsize):
+        for y in range(int(time % line_width), img.shape[0], line_width):
             x1 = -1
             line_lines = []
             for x in range(img.shape[1]):
@@ -321,7 +322,10 @@ class FillConverter(Converter):
                         used_fillings.append(list(pos))
 
             # Find the bet way to connect the child contours to the outer contour
-            for child in child_contours:
+            # or add child contours to other child contours
+            # First we add any children to other children
+            added_children = []
+            for k, child in enumerate(child_contours):
                 # This is the top left point of the child contour
                 pos = child[0]
                 # Find the closest point on the outer contour that is to the top left of this point
@@ -332,9 +336,39 @@ class FillConverter(Converter):
                     if dist <= best_dist and coord[0] <= pos[0] and coord[1] <= pos[1]:
                         best_dist = dist
                         best_i = i
+                # Check if any other child is closer than the outer contour
+                best_child = -1
+                for j, other_child in enumerate(child_contours):
+                    if k == j:
+                        continue
+                    for i, coord in enumerate(other_child):
+                        dist = np.linalg.norm(pos - coord)
+                        if dist <= best_dist and coord[0] <= pos[0] and coord[1] <= pos[1]:
+                            best_dist = dist
+                            best_i = i
+                            best_child = j
+                if best_child != -1:
+                    child_contours[best_child] = np.vstack((child_contours[best_child][0:best_i], child, child[0], child_contours[best_child][best_i:-1]))
+                    added_children.append(k)
+
+            # Add the remaining children to the outer contour
+            for k, child in enumerate(child_contours):
+                if k in added_children:
+                    continue
+                # This is the top left point of the child contour
+                pos = child[0]
+                # Find the closest point on the outer contour that is to the top left of this point
+                best_dist = np.inf
+                best_i = -1
+                for i, coord in enumerate(contour):
+                    dist = np.linalg.norm(pos - coord)
+                    if dist <= best_dist and coord[0] <= pos[0] and coord[1] <= pos[1]:
+                        best_dist = dist
+                        best_i = i
+
                 # Add the index of the best connection point to the list of start indices
                 # and add the child contour to the list of fillings so it gets added
-                c_fillings.append(list(child))
+                c_fillings.append(list(child) + [child[0]])
                 c_start_indices.append(best_i)
 
             # Combine everything into a list of anchors
@@ -351,29 +385,39 @@ class FillConverter(Converter):
             if len(contour) > 0:
                 anchors.append(contour[0])
 
-            anchor1 = np.round(anchors.pop(0) * SCALE)
-            slidercode += "%s,%s,%s,6,0,L" % (int(anchor1[0]), int(anchor1[1]), int(time))
+            anchor1 = anchors.pop(0)
+            anchor1_rounded = np.round(anchors.pop(0) * SCALE)
+            slidercode += "%s,%s,%s,6,0,L" % (int(anchor1_rounded[0]), int(anchor1_rounded[1]), int(time))
 
             total_dist = 0
+            last_anchor_rounded = anchor1_rounded
             last_anchor = anchor1
+            lastlast_anchor = anchor1
             for i, anchor in enumerate(anchors):
                 round_anchor = np.round(anchor * SCALE)
 
+                # We skip some anchors if they are ugly
                 if 0 < i < len(anchors) - 1:
-                    next_anchor = np.round(anchors[i + 1] * SCALE)
-                    if np.linalg.norm(anchors[i + 1] - anchor, ord=np.inf) <= 1 or\
-                            (triangle_area(last_anchor, round_anchor, next_anchor) < 1e-6 and
-                             np.linalg.norm(last_anchor - round_anchor) < np.linalg.norm(next_anchor - last_anchor)):
+                    next_anchor = anchors[i + 1]
+                    nextnext_anchor = anchors[i + 2] if i + 2 < len(anchors) else next_anchor
+                    if (np.linalg.norm(last_anchor - lastlast_anchor) > np.linalg.norm(anchor - next_anchor) and
+                            np.linalg.norm(last_anchor - anchor, ord=np.inf) <= 1) or\
+                        (np.linalg.norm(last_anchor - anchor) < np.linalg.norm(nextnext_anchor - next_anchor) and
+                            np.linalg.norm(next_anchor - anchor, ord=np.inf) <= 1) or\
+                        (triangle_area(last_anchor, anchor, next_anchor) < 1e-6 and
+                            np.linalg.norm(last_anchor - anchor) <= np.linalg.norm(next_anchor - last_anchor)):
                         continue
 
-                if last_anchor is not None:
-                    dist = np.linalg.norm(round_anchor - last_anchor)
+                if last_anchor_rounded is not None:
+                    dist = np.linalg.norm(round_anchor - last_anchor_rounded)
                     total_dist += dist
 
                 anchor_string = "|%s:%s" % (int(round_anchor[0]), int(round_anchor[1]))
                 slidercode += anchor_string
 
-                last_anchor = round_anchor
+                lastlast_anchor = last_anchor
+                last_anchor_rounded = round_anchor
+                last_anchor = anchor
 
             slidercode += ",1,%s\n" % total_dist
 
