@@ -400,9 +400,11 @@ class FillConverter(Converter):
                 if 0 < i < len(anchors) - 1:
                     next_anchor = anchors[i + 1]
                     nextnext_anchor = anchors[i + 2] if i + 2 < len(anchors) else next_anchor
-                    if (np.linalg.norm(last_anchor - lastlast_anchor) > np.linalg.norm(anchor - next_anchor) and
+                    big_space = np.linalg.norm(next_anchor - anchor) > 10
+                    next_big_space = np.linalg.norm(next_anchor - nextnext_anchor) > 10
+                    if ((np.linalg.norm(last_anchor - lastlast_anchor) > np.linalg.norm(anchor - next_anchor) or not big_space) and
                             np.linalg.norm(last_anchor - anchor, ord=np.inf) <= 1) or\
-                        (np.linalg.norm(last_anchor - anchor) < np.linalg.norm(nextnext_anchor - next_anchor) and
+                        (np.linalg.norm(last_anchor - anchor) < np.linalg.norm(nextnext_anchor - next_anchor) and next_big_space and
                             np.linalg.norm(next_anchor - anchor, ord=np.inf) <= 1) or\
                         (triangle_area(last_anchor, anchor, next_anchor) < 1e-6 and
                             np.linalg.norm(last_anchor - anchor) <= np.linalg.norm(next_anchor - last_anchor)):
