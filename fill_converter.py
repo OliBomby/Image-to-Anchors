@@ -4,7 +4,7 @@ import traceback
 from converter import *
 import cv2
 import networkx as nx
-import TSP_Solver.Graph_TSP as Graph
+from TSP_Solver import Graph_TSP
 
 
 class Line:
@@ -228,7 +228,7 @@ class FillConverter(Converter):
             # Solve traveling salesman
             if self.VERBOSE:
                 print("Solving TSP...")
-            instance_graph = Graph.Graph_TSP(lines_dict2, adj, "frame", -1)
+            instance_graph = Graph_TSP(lines_dict2, adj, "frame", -1)
             christofides = instance_graph.christofides()
 
             result = christofides

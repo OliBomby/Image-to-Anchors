@@ -1,11 +1,12 @@
 import random
 import operator
 import numpy as np
-import disjoint_sets as DS
 from scipy.spatial import ConvexHull
 from scipy.sparse.csgraph import minimum_spanning_tree
 import networkx.algorithms as naa
 import networkx as nx
+
+from .disjoint_sets import disjoint_set
 
 
 class Algorithms:
@@ -86,7 +87,7 @@ class Algorithms:
         allNodes = []
         edgePath = []
         for node in range(0, self.counts):
-            allNodes.append(DS.disjoint_set(node))
+            allNodes.append(disjoint_set(node))
         sorted_edges = sorted(self.edgeDict.items(), key=operator.itemgetter(1))
         degreeDict = {element: 0 for element in allNodes}
         numEdges = 0

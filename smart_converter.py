@@ -1,6 +1,6 @@
 import networkx as nx
 from converter import *
-import TSP_Solver.Graph_TSP as Graph
+from TSP_Solver import Graph_TSP
 
 
 class Line:
@@ -128,7 +128,7 @@ class SmartConverter(Converter):
         # Solve traveling salesman
         if self.VERBOSE:
             print("Solving TSP...")
-        instance_graph = Graph.Graph_TSP(lines_dict, adj, "frame", -1)
+        instance_graph = Graph_TSP(lines_dict, adj, "frame", -1)
         christofides = instance_graph.christofides()
 
         result = christofides

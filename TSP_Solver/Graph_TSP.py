@@ -1,5 +1,5 @@
-import algorithms
-import bounds
+from .bounds import Bounds
+from .algorithms import Algorithms
 
 
 class Graph_TSP:
@@ -18,8 +18,8 @@ class Graph_TSP:
                 for j in range(i + 1, self.counts):
                     vertices = (i, j)
                     self.edgeDict[vertices] = self.adjMatrix[i, j]
-        self.Bounds = bounds.Bounds(self.nodeDict, self.adjMatrix)
-        self.solutions = algorithms.Algorithms(self.nodeDict, self.adjMatrix, self.counts, self.edgeDict)
+        self.Bounds = Bounds(self.nodeDict, self.adjMatrix)
+        self.solutions = Algorithms(self.nodeDict, self.adjMatrix, self.counts, self.edgeDict)
 
     def HKLowerBoundCost(self):
         return self.Bounds.calculateHKLB()

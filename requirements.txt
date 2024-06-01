@@ -2,3 +2,4 @@ numpy
 pillow~=8.2.0
 scipy
 networkx~=2.5.1
+opencv-python
