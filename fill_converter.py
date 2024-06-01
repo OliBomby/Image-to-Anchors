@@ -4,7 +4,7 @@ import traceback
 from converter import *
 import cv2
 import networkx as nx
-import Graph_TSP as Graph
+import TSP_Solver.Graph_TSP as Graph
 
 
 class Line:

@@ -1,6 +1,6 @@
 import networkx as nx
 from converter import *
-import Graph_TSP as Graph
+import TSP_Solver.Graph_TSP as Graph
 
 
 class Line:
